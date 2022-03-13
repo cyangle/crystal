@@ -397,6 +397,38 @@ end
 class JSONVariableDiscriminatorEnum8 < JSONVariableDiscriminatorValueType
 end
 
+abstract class JSONConstDiscriminatorValueType
+  include JSON::Serializable
+end
+
+@[JSON::Serializable::Options(constants: {type: 0})]
+class JSONConstDiscriminatorNumber < JSONConstDiscriminatorValueType
+end
+
+@[JSON::Serializable::Options(constants: {type: 0.5})]
+class JSONConstDiscriminatorFloat < JSONConstDiscriminatorValueType
+end
+
+@[JSON::Serializable::Options(constants: {type: "1"})]
+class JSONConstDiscriminatorString < JSONConstDiscriminatorValueType
+end
+
+@[JSON::Serializable::Options(constants: {type: true})]
+class JSONConstDiscriminatorBool < JSONConstDiscriminatorValueType
+end
+
+@[JSON::Serializable::Options(constants: {type: nil})]
+class JSONConstDiscriminatorNil < JSONConstDiscriminatorValueType
+end
+
+# @[JSON::Serializable::Options(constants: {type: JSONVariableDiscriminatorEnumFoo::Foo})]
+# class JSONConstDiscriminatorEnum < JSONConstDiscriminatorValueType
+# end
+#
+# @[JSON::Serializable::Options(constants: {type: JSONVariableDiscriminatorEnumFoo8::Foo})]
+# class JSONConstDiscriminatorEnum8 < JSONConstDiscriminatorValueType
+# end
+
 module JSONNamespace
   struct FooRequest
     include JSON::Serializable
@@ -951,6 +983,31 @@ describe "JSON mapping" do
 
       object_enum = JSONVariableDiscriminatorValueType.from_json(%({"type": 18}))
       object_enum.should be_a(JSONVariableDiscriminatorEnum8)
+    end
+  end
+
+  describe "constants option" do
+    it "deserializes" do
+      object_number = JSONConstDiscriminatorValueType.from_json(%({"type": 0}))
+      object_number.should be_a(JSONConstDiscriminatorNumber)
+
+      object_float = JSONConstDiscriminatorValueType.from_json(%({"type": 0.5}))
+      object_float.should be_a(JSONConstDiscriminatorFloat)
+
+      object_string = JSONConstDiscriminatorValueType.from_json(%({"type": "1"}))
+      object_string.should be_a(JSONConstDiscriminatorString)
+
+      object_bool = JSONConstDiscriminatorValueType.from_json(%({"type": true}))
+      object_bool.should be_a(JSONConstDiscriminatorBool)
+
+      object_nil = JSONConstDiscriminatorValueType.from_json(%({"type": null}))
+      object_nil.should be_a(JSONConstDiscriminatorNil)
+
+      # object_enum = JSONConstDiscriminatorValueType.from_json(%({"type": 4}))
+      # object_enum.should be_a(JSONConstDiscriminatorEnum)
+      #
+      # object_enum = JSONConstDiscriminatorValueType.from_json(%({"type": 18}))
+      # object_enum.should be_a(JSONConstDiscriminatorEnum8)
     end
   end
 

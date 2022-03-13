@@ -139,10 +139,33 @@ module JSON
       end
 
       private def self.new_from_json_pull_parser(pull : ::JSON::PullParser)
-        instance = allocate
-        instance.initialize(__pull_for_json_serializable: pull)
-        GC.add_finalizer(instance) if instance.responds_to?(:finalize)
-        instance
+        \{% if @type.abstract? || @type.module? %}
+          %location = pull.location
+
+          \{% subclasses = @type.all_subclasses %}
+          \{% subclasses = subclasses.select { |t| !t.abstract? && !t.type_vars.any?(&.is_a?(MacroId)) } %}
+
+          \{% if subclasses.empty? %}
+            raise ::JSON::SerializableError.new("Couldn't deserialize to type without concrete subclasses", {{@type.name.stringify}}, nil, *%location, nil)
+          \{% elsif subclasses.size == 1 %}
+            \{{subclasses[0]}}.new(pull)
+          \{% else %}
+            %string = pull.read_raw
+            \{% for type in subclasses %}
+              begin
+                return \{{type}}.from_json(%string)
+              rescue JSON::ParseException
+                # Ignore
+              end
+            \{% end %}
+            raise ::JSON::SerializableError.new("Couldn't deserialize from #{%string}", {{@type.name.stringify}}, nil, *%location, nil)
+          \{% end %}
+        \{% else %}
+          instance = allocate
+          instance.initialize(__pull_for_json_serializable: pull)
+          GC.add_finalizer(instance) if instance.responds_to?(:finalize)
+          instance
+        \{% end %}
       end
 
       # When the type is inherited, carry over the `new`
@@ -157,8 +180,27 @@ module JSON
 
     def initialize(*, __pull_for_json_serializable pull : ::JSON::PullParser)
       {% begin %}
+        {% options = @type.annotations(::JSON::Serializable::Options) %}
+        {% constants = {} of Nil => Nil %}
+        {% for option in options %}
+          {% if values = option[:constants] %}
+            {% for name, value in values %}
+              {% if constants.keys.includes?(name) %}
+                {% name.raise "constant field #{name.stringify} has already been defined" %}
+              {% end %}
+              {% unless value.is_a?(StringLiteral) || value.is_a?(NumberLiteral) || value.is_a?(BoolLiteral) || value.is_a?(NilLiteral) %}
+                {% value.raise "constant value must be one of StringLiteral, NumberLiteral, BoolLiteral, or NilLiteral, not #{value.class_name.id}" %}
+              {% end %}
+              {% constants[name] = value %}
+            {% end %}
+          {% end %}
+        {% end %}
+
         {% properties = {} of Nil => Nil %}
         {% for ivar in @type.instance_vars %}
+          {% if constants.keys.includes?(ivar.name) %}
+            {% ivar.raise "#{ivar.name.stringify} is already used as a constant field name" %}
+          {% end %}
           {% ann = ivar.annotation(::JSON::Field) %}
           {% unless ann && (ann[:ignore] || ann[:ignore_deserialize]) %}
             {%
@@ -180,6 +222,9 @@ module JSON
           %var{name} = nil
           %found{name} = false
         {% end %}
+        {% for name, value in constants %}
+          %const_found{name} = false
+        {% end %}
 
         %location = pull.location
         begin
@@ -191,6 +236,33 @@ module JSON
           %key_location = pull.location
           key = pull.read_object_key
           case key
+          {% for name, value in constants %}
+            when {{name.stringify}}
+              begin
+                %const{name} =
+                  {% if value.is_a?(StringLiteral) %}
+                    pull.read_string
+                  {% elsif value.is_a?(NumberLiteral) %}
+                    {% if value.kind == :f32 || value.kind == :f64 %}
+                      pull.read_float
+                    {% else %}
+                      pull.read_int
+                    {% end %}
+                  {% elsif value.is_a?(BoolLiteral) %}
+                    pull.read_bool
+                  {% elsif value.is_a?(NilLiteral) %}
+                    pull.read_null
+                  {% end %}
+                %const_found{name} = %const{name} == {{value}}
+              rescue exc : ::JSON::ParseException
+                raise ::JSON::SerializableError.new(exc.message, self.class.to_s, {{name.stringify}}, *%key_location, exc)
+              end
+              unless %const_found{name}
+                raise ::JSON::SerializableError.new(
+                  "Expected JSON attribute {{name.id}} to be #{{{value}}.inspect} but got #{%const{name}.inspect}",
+                  self.class.to_s, {{name.stringify}}, *%key_location, nil)
+              end
+          {% end %}
           {% for name, value in properties %}
             when {{value[:key]}}
               %found{name} = true
@@ -223,6 +295,11 @@ module JSON
         end
         pull.read_next
 
+        {% for name, value in constants %}
+          unless %const_found{name}
+            raise ::JSON::SerializableError.new("Missing JSON attribute: {{name.id}}", self.class.to_s, nil, *%location, nil)
+          end
+        {% end %}
         {% for name, value in properties %}
           {% unless value[:nilable] || value[:has_default] %}
             if %var{name}.nil? && !%found{name} && !::Union({{value[:type]}}).nilable?
@@ -264,11 +341,29 @@ module JSON
 
     def to_json(json : ::JSON::Builder)
       {% begin %}
-        {% options = @type.annotation(::JSON::Serializable::Options) %}
-        {% emit_nulls = options && options[:emit_nulls] %}
+        {% options = @type.annotations(::JSON::Serializable::Options) %}
+        {% emit_nulls = options.any? &.[:emit_nulls] %}
+
+        {% constants = {} of Nil => Nil %}
+        {% for option in options %}
+          {% if values = option[:constants] %}
+            {% for name, value in values %}
+              {% if constants.keys.includes?(name) %}
+                {% name.raise "constant field #{name.stringify} has already been defined" %}
+              {% end %}
+              {% unless value.is_a?(StringLiteral) || value.is_a?(NumberLiteral) || value.is_a?(BoolLiteral) || value.is_a?(NilLiteral) %}
+                {% value.raise "constant value must be one of StringLiteral, NumberLiteral, BoolLiteral, or NilLiteral, not #{value.class_name.id}" %}
+              {% end %}
+              {% constants[name] = value %}
+            {% end %}
+          {% end %}
+        {% end %}
 
         {% properties = {} of Nil => Nil %}
         {% for ivar in @type.instance_vars %}
+          {% if constants.keys.includes?(ivar.name) %}
+            {% ivar.raise "#{ivar.name.stringify} is already used as a constant field name" %}
+          {% end %}
           {% ann = ivar.annotation(::JSON::Field) %}
           {% unless ann && (ann[:ignore] || ann[:ignore_serialize]) %}
             {%
@@ -284,6 +379,10 @@ module JSON
         {% end %}
 
         json.object do
+          {% for key, value in constants %}
+            json.field({{ key.stringify }}) { {{ value }}.to_json(json) }
+          {% end %}
+
           {% for name, value in properties %}
             _{{name}} = @{{name}}
 
