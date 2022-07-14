@@ -14,6 +14,8 @@ class Crystal::Repl
     @interpreter = Interpreter.new(@context)
 
     @buffer = ""
+    puts "interpreter: #{Process.pid} Crystal::SignalChildHandler: #{Crystal::SignalChildHandler.hash}"
+    Crystal::Signal.child_handler = ->(signal : ::Signal) { puts "received child signal: #{signal} from Crystal::SignalChildHandler: #{Crystal::SignalChildHandler.hash}"}
   end
 
   def run

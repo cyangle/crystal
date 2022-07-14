@@ -341,6 +341,7 @@ module Crystal::SignalChildHandler
     loop do
       pid = LibC.waitpid(-1, out exit_code, LibC::WNOHANG)
 
+      puts "handling child exit code #{exit_code} from #{pid} at #{self.hash}"
       case pid
       when 0
         return
