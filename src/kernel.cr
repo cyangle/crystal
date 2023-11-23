@@ -562,7 +562,7 @@ end
   end
 {% end %}
 
-{% unless flag?(:interpreted) || flag?(:wasm32) %}
+{% unless flag?(:wasm32) %}
   # Background loop to cleanup unused fiber stacks.
   spawn(name: "Fiber Clean Loop") do
     loop do
@@ -577,6 +577,7 @@ end
     Crystal::System::Signal.setup_default_handlers
   {% end %}
 
+  {% unless flag?(:interpreted) %}
   # load debug info on start up of the program is executed with CRYSTAL_LOAD_DEBUG_INFO=1
   # this will make debug info available on print_frame that is used by Crystal's segfault handler
   #
@@ -588,5 +589,6 @@ end
 
   {% if flag?(:preview_mt) %}
     Crystal::Scheduler.init_workers
+  {% end %}
   {% end %}
 {% end %}

@@ -7,6 +7,7 @@ class IPSocket < Socket
   getter remote_address : Socket::IPAddress { system_remote_address }
 
   def close
+    # debugger
     super
   ensure
     @local_address = nil

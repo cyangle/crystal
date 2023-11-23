@@ -79,17 +79,17 @@ module Crystal::System::Socket
     end
   end
 
-  private def system_send(bytes : Bytes) : Int32
+  private def system_send(bytes : Bytes)
     evented_send(bytes, "Error sending datagram") do |slice|
-      LibC.send(fd, slice.to_unsafe.as(Void*), slice.size, 0)
+      LibC.send(fd, slice.to_unsafe.as(Void*), slice.size, 0).to_i64
     end
   end
 
   private def system_send_to(bytes : Bytes, addr : ::Socket::Address)
-    bytes_sent = LibC.sendto(fd, bytes.to_unsafe.as(Void*), bytes.size, 0, addr, addr.size)
+    bytes_sent = LibC.sendto(fd, bytes.to_unsafe.as(Void*), bytes.size, 0, addr, addr.size).to_i64
     raise ::Socket::Error.from_errno("Error sending datagram to #{addr}") if bytes_sent == -1
     # to_i32 is fine because string/slice sizes are an Int32
-    bytes_sent.to_i32
+    bytes_sent
   end
 
   private def system_receive(bytes)
@@ -258,7 +258,7 @@ module Crystal::System::Socket
 
   private def unbuffered_write(slice : Bytes)
     evented_write(slice, "Error writing to socket") do |slice|
-      LibC.send(fd, slice, slice.size, 0)
+      LibC.send(fd, slice, slice.size.to_u64, 0).to_i64
     end
   end
 
