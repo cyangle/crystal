@@ -12,7 +12,7 @@ struct Crystal::System::Process
       while !Crystal::System::SignalChildHandler.pending.has_key?(@pid)
         puts "#{Crystal::System::SignalChildHandler.hash}: checking pending for pid: #{@pid}"
         ::Fiber.yield
-        debugger
+        # debugger
         sleep 3.seconds
       end
     {% end %}

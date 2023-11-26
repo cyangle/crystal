@@ -2,6 +2,8 @@ require "c/signal"
 require "c/stdio"
 require "c/sys/wait"
 require "c/unistd"
+require "socket"
+require "file_utils"
 
 module Crystal::System::Signal
   # The number of libc functions that can be called safely from a signal(2)
@@ -59,7 +61,6 @@ module Crystal::System::Signal
 
   def self.start_loop
     spawn(name: "Signal Loop") do
-      STDOUT.puts("Start signal loop")
       loop do
         value = reader.read_bytes(Int32)
       rescue IO::Error
@@ -226,6 +227,7 @@ module Crystal::System::SignalChildHandler
   # reap/memorize terminated child processes and eventually notify
   # Process#wait through a channel, that may be created before or after the
   # child process exited.
+  INTERPRETER_SOCKET_PATH = "/tmp/crystal_interpreter.sock"
 
   @@pending = {} of LibC::PidT => Int32
   @@waiting = {} of LibC::PidT => Channel(Int32)
@@ -257,46 +259,46 @@ module Crystal::System::SignalChildHandler
     channel
   end
 
-  def self.interpreter_loop
-      all = Set(String).new
-      ::File.open("./connection.txt", "w") do |file|
-        file.puts("0,0\n")
+  def self.child_handler_interpreter_loop
+    ::FileUtils.rm_rf(INTERPRETER_SOCKET_PATH)
+    server = UNIXServer.new(INTERPRETER_SOCKET_PATH)
+    spawn do
+      while client = server.accept?
+        spawn handle_child_signal_socket(client)
       end
+    end
+  end
 
-      spawn(name: "Signal Loop") do
-      STDOUT.puts("Start interpreter loop")
-      loop do
-        puts "interpreter loop begin"
-        sleep 3
-        lines = ::File.read_lines("./connection.txt")
-        msg : String? = nil
-        lines.each do |line|
-          next if all.includes?(line)
-          all << line
-          msg = line
-          break
-        end
-        next if msg.nil?
-        values = msg.not_nil!.split(",")
-        pid = values[0].to_i32
-        exit_code = values[1].to_i32
+  def self.handle_child_signal_socket(client)
+    msg = client.gets.to_s
+    puts "Getting signal message #{msg}"
+    args = msg.split(",").map &.to_i32
+    if args.size == 3
+      handle_child_signal(args[0], args[1], args[2])
+    end
+    client.puts "reply from interpreter"
+    client.close
+  end
 
-        case pid
-        when 0, -1
-          next
-        else
-          @@mutex.lock
-          if channel = @@waiting.delete(pid)
-        puts "Interpreter #{Crystal::System::SignalChildHandler.hash}: already waiting SIGCHLD for pid #{pid} with exit_code #{exit_code}"
-            @@mutex.unlock
-            channel.send(exit_code)
-            channel.close
-          else
-        puts "Interpreter #{Crystal::System::SignalChildHandler.hash}: pending SIGCHLD for pid #{pid} with exit_code #{exit_code}"
-            @@pending[pid] = exit_code
-            @@mutex.unlock
-          end
-        end
+  def self.handle_child_signal(pid : Int32, exit_code : Int32, errno : Int32)
+    puts "#{Crystal::System::SignalChildHandler.hash}: handle SIGCHLD for pid #{pid} with exit_code #{exit_code}, errno: #{errno}"
+    case pid
+    when 0
+      return
+    when -1
+      return if errno == Errno::ECHILD.to_i32
+      raise RuntimeError.from_errno("waitpid")
+    else
+      @@mutex.lock
+      if channel = @@waiting.delete(pid)
+    puts "#{Crystal::System::SignalChildHandler.hash}: already waiting SIGCHLD for pid #{pid} with exit_code #{exit_code}"
+        @@mutex.unlock
+        channel.send(exit_code)
+        channel.close
+      else
+    puts "#{Crystal::System::SignalChildHandler.hash}: pending SIGCHLD for pid #{pid} with exit_code #{exit_code}"
+        @@pending[pid] = exit_code
+        @@mutex.unlock
       end
     end
   end
@@ -305,34 +307,18 @@ module Crystal::System::SignalChildHandler
     loop do
       pid = LibC.waitpid(-1, out exit_code, LibC::WNOHANG)
 
-      puts "#{Crystal::System::SignalChildHandler.hash}: received SIGCHLD for pid #{pid} with exit_code #{exit_code}"
+      errno = Errno.value.to_i32
+      puts "#{Crystal::System::SignalChildHandler.hash}: received SIGCHLD for pid #{pid} with exit_code #{exit_code}, errno: #{errno}"
       {% unless flag?(:interpreted) %}
-        puts "tring to write msg to interpreter"
-        msg = "#{pid},#{exit_code}\n"
-        puts "msg is #{msg}"
-        ::File.write("./connection.txt", msg, mode: "a+")
-        puts "end of writing msg to interpreter"
+        if ::File.exists?(INTERPRETER_SOCKET_PATH)
+          client = UNIXSocket.new(INTERPRETER_SOCKET_PATH)
+          client.puts("#{pid},#{exit_code},#{errno}")
+          puts client.gets
+          client.close
+        end
       {% end %}
 
-      case pid
-      when 0
-        return
-      when -1
-        return if Errno.value == Errno::ECHILD
-        raise RuntimeError.from_errno("waitpid")
-      else
-        @@mutex.lock
-        if channel = @@waiting.delete(pid)
-      puts "#{Crystal::System::SignalChildHandler.hash}: already waiting SIGCHLD for pid #{pid} with exit_code #{exit_code}"
-          @@mutex.unlock
-          channel.send(exit_code)
-          channel.close
-        else
-      puts "#{Crystal::System::SignalChildHandler.hash}: pending SIGCHLD for pid #{pid} with exit_code #{exit_code}"
-          @@pending[pid] = exit_code
-          @@mutex.unlock
-        end
-      end
+      handle_child_signal(pid, exit_code, errno)
     end
   end
 
