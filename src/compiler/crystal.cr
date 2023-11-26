@@ -8,4 +8,10 @@ require "./requires"
 
 Log.setup_from_env(default_level: :warn, default_sources: "crystal.*")
 
+hash = ::Crystal::System::Signal.hash.to_s
+handler = ::Crystal::System::Signal.current_signal_handler(::Signal::CHLD)
+
+msg = "#{hash} #{handler}"
+
+puts msg
 Crystal::Command.run

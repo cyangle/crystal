@@ -19,6 +19,7 @@ module Crystal::System::Signal
   @@mutex = Mutex.new(:unchecked)
 
   def self.trap(signal, handler) : Nil
+    Crystal::System.print_error("setting handler for #{signal}\n")
     @@mutex.synchronize do
       unless @@handlers[signal]?
         @@sigset << signal
@@ -56,8 +57,9 @@ module Crystal::System::Signal
     end
   end
 
-  private def self.start_loop
+  def self.start_loop
     spawn(name: "Signal Loop") do
+      STDOUT.puts("Start signal loop")
       loop do
         value = reader.read_bytes(Int32)
       rescue IO::Error
@@ -103,6 +105,7 @@ module Crystal::System::Signal
   # signal to the parent. Exec will reset the signals properly for the
   # sub-process.
   def self.after_fork_before_exec
+    puts "#{Process.pid}: setting default handlers in child"
     ::Signal.each do |signal|
       LibC.signal(signal, LibC::SIG_DFL) if @@sigset.includes?(signal)
     end
@@ -164,6 +167,12 @@ module Crystal::System::Signal
     ::Signal::CHLD.reset
   end
 
+  def self.current_signal_handler(signal)
+    action = LibC::Sigaction.new
+    LibC.sigaction(signal, nil, pointerof(action))
+    action.sa_sigaction.pointer
+  end
+
   def self.setup_segfault_handler
     return unless @@setup_segfault_handler.test_and_set
 
@@ -222,9 +231,19 @@ module Crystal::System::SignalChildHandler
   @@waiting = {} of LibC::PidT => Channel(Int32)
   @@mutex = Mutex.new(:unchecked)
 
+  def self.pending
+    @@pending
+  end
+
+  def self.waiting
+    @@waiting
+  end
+
+
   def self.wait(pid : LibC::PidT) : Channel(Int32)
     channel = Channel(Int32).new(1)
 
+    puts "#{Crystal::System::SignalChildHandler.hash}: waiting for SIGCHLD for pid #{pid}"
     @@mutex.lock
     if exit_code = @@pending.delete(pid)
       @@mutex.unlock
@@ -238,9 +257,62 @@ module Crystal::System::SignalChildHandler
     channel
   end
 
+  def self.interpreter_loop
+      all = Set(String).new
+      ::File.open("./connection.txt", "w") do |file|
+        file.puts("0,0\n")
+      end
+
+      spawn(name: "Signal Loop") do
+      STDOUT.puts("Start interpreter loop")
+      loop do
+        puts "interpreter loop begin"
+        sleep 3
+        lines = ::File.read_lines("./connection.txt")
+        msg : String? = nil
+        lines.each do |line|
+          next if all.includes?(line)
+          all << line
+          msg = line
+          break
+        end
+        next if msg.nil?
+        values = msg.not_nil!.split(",")
+        pid = values[0].to_i32
+        exit_code = values[1].to_i32
+
+        case pid
+        when 0, -1
+          next
+        else
+          @@mutex.lock
+          if channel = @@waiting.delete(pid)
+        puts "Interpreter #{Crystal::System::SignalChildHandler.hash}: already waiting SIGCHLD for pid #{pid} with exit_code #{exit_code}"
+            @@mutex.unlock
+            channel.send(exit_code)
+            channel.close
+          else
+        puts "Interpreter #{Crystal::System::SignalChildHandler.hash}: pending SIGCHLD for pid #{pid} with exit_code #{exit_code}"
+            @@pending[pid] = exit_code
+            @@mutex.unlock
+          end
+        end
+      end
+    end
+  end
+
   def self.call : Nil
     loop do
       pid = LibC.waitpid(-1, out exit_code, LibC::WNOHANG)
+
+      puts "#{Crystal::System::SignalChildHandler.hash}: received SIGCHLD for pid #{pid} with exit_code #{exit_code}"
+      {% unless flag?(:interpreted) %}
+        puts "tring to write msg to interpreter"
+        msg = "#{pid},#{exit_code}\n"
+        puts "msg is #{msg}"
+        ::File.write("./connection.txt", msg, mode: "a+")
+        puts "end of writing msg to interpreter"
+      {% end %}
 
       case pid
       when 0
@@ -251,10 +323,12 @@ module Crystal::System::SignalChildHandler
       else
         @@mutex.lock
         if channel = @@waiting.delete(pid)
+      puts "#{Crystal::System::SignalChildHandler.hash}: already waiting SIGCHLD for pid #{pid} with exit_code #{exit_code}"
           @@mutex.unlock
           channel.send(exit_code)
           channel.close
         else
+      puts "#{Crystal::System::SignalChildHandler.hash}: pending SIGCHLD for pid #{pid} with exit_code #{exit_code}"
           @@pending[pid] = exit_code
           @@mutex.unlock
         end

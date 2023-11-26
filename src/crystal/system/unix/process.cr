@@ -8,6 +8,14 @@ struct Crystal::System::Process
   getter pid : LibC::PidT
 
   def initialize(@pid : LibC::PidT)
+    {% if flag?(:interpreted) %}
+      while !Crystal::System::SignalChildHandler.pending.has_key?(@pid)
+        puts "#{Crystal::System::SignalChildHandler.hash}: checking pending for pid: #{@pid}"
+        ::Fiber.yield
+        debugger
+        sleep 3.seconds
+      end
+    {% end %}
     @channel = Crystal::System::SignalChildHandler.wait(@pid)
   end
 
@@ -16,6 +24,10 @@ struct Crystal::System::Process
 
   def wait
     @channel.receive
+  end
+
+  def closed?
+    @channel.closed?
   end
 
   def exists?

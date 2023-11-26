@@ -246,6 +246,7 @@ class Process
     pid = Crystal::System::Process.spawn(command_args, env, clear_env, fork_input, fork_output, fork_error, chdir.try &.to_s)
     @process_info = Crystal::System::Process.new(pid)
 
+    puts "#{Crystal::System::SignalChildHandler.hash}: Running pid #{pid} with command #{command_args}"
     fork_input.close unless fork_input.in?(input, STDIN)
     fork_output.close unless fork_output.in?(output, STDOUT)
     fork_error.close unless fork_error.in?(error, STDERR)
@@ -418,6 +419,10 @@ class Process
   def self.chroot(path : String) : Nil
     Crystal::System::Process.chroot(path)
   end
+
+  def process_info
+    @process_info
+  end
 end
 
 # Executes the given command in a subshell.
@@ -465,6 +470,13 @@ end
 def `(command) : String
   process = Process.new(command, shell: true, input: Process::Redirect::Inherit, output: Process::Redirect::Pipe, error: Process::Redirect::Inherit)
   output = process.output.gets_to_end
+  pid = process.pid.to_i32
+  {% unless flag?(:interpreted) %}
+    while !process.process_info.closed?
+      puts "#{Crystal::System::SignalChildHandler.hash}: checking pending for pid: #{pid}, command: #{command}"
+      sleep 3.seconds
+    end
+  {% end %}
   status = process.wait
   $? = status
   output
