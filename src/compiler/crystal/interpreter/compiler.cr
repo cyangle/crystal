@@ -801,6 +801,20 @@ class Crystal::Repl::Compiler < Crystal::Visitor
   end
 
   def lookup_local_var?(name : String) : LocalVar?
+    # If we are compiling a block, check if the name is a block argument.
+    if compiling_block = @compiling_block
+      if compiling_block.block.args.any?(&.name.==(name))
+        # It is a block argument. Only look for it in the current block scope.
+        index = @local_vars.name_to_index?(name, @block_level)
+        if index
+          type = @local_vars.type(name, @block_level)
+          return LocalVar.new(index, type)
+        else
+          return nil
+        end
+      end
+    end
+
     block_level = @block_level
     while block_level >= 0
       index = @local_vars.name_to_index?(name, block_level)
