@@ -3304,7 +3304,12 @@ class Crystal::Repl::Compiler < Crystal::Visitor
   end
 
   private def discard_value(node : ASTNode)
-    accept_with_wants_value node, false
+    type = node.type?
+    return unless type
+    return if type.no_return?
+
+    request_value(node)
+    pop aligned_sizeof_type(type), node: nil
   end
 
   private def accept_with_wants_value(node : ASTNode, wants_value)
