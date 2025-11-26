@@ -110,8 +110,9 @@ module Crystal
           left = Call.new(obj.obj, obj.name, temp_assign).at(obj.obj)
           right = Call.new(temp_var.clone, node.name, node.args).at(node)
         end
-        node = And.new(left, right).at(left)
-        node = node.transform self
+        left = left.transform(self)
+        right = right.transform(self)
+        node = inject_nested_comparison(left, right)
       else
         node = super
       end
@@ -509,6 +510,15 @@ module Crystal
       end
       values = [Var.new(var_name).at(expressions)] of ASTNode
       MultiAssign.new(targets, values).at(expressions)
+    end
+
+    private def inject_nested_comparison(node : If, right : ASTNode)
+      node.then = inject_nested_comparison(node.then, right)
+      node
+    end
+
+    private def inject_nested_comparison(node : ASTNode, right : ASTNode)
+      If.new(node, right, BoolLiteral.new(false)).at(node)
     end
   end
 end
