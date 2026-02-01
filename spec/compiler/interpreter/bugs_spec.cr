@@ -258,5 +258,79 @@ describe Crystal::Repl::Interpreter do
         parser = "parser"
       CRYSTAL
     end
+
+    it "executes inherited hook expansions in ClassDef" do
+      interpret(<<-CRYSTAL).should eq(1)
+        class Foo
+          macro inherited
+            def self.foo
+              1
+            end
+          end
+        end
+
+        class Bar < Foo
+        end
+
+        Bar.foo
+      CRYSTAL
+    end
+
+    it "executes included hook expansions in Include" do
+      interpret(<<-CRYSTAL).should eq(1)
+        module Moo
+          macro included
+            def self.foo
+              1
+            end
+          end
+        end
+
+        class Bar
+          include Moo
+        end
+
+        Bar.foo
+      CRYSTAL
+    end
+
+    it "executes extended hook expansions in Extend" do
+      interpret(<<-CRYSTAL).should eq(1)
+        module Moo
+          macro extended
+            def self.foo
+              1
+            end
+          end
+        end
+
+        class Bar
+          extend Moo
+        end
+
+        Bar.foo
+      CRYSTAL
+    end
+
+    it "executes method_added hook expansions in Def" do
+      interpret(<<-CRYSTAL, prelude: "prelude").should eq(%("foo"))
+        class Foo
+          @@last_method : String?
+
+          def self.last_method
+            @@last_method
+          end
+
+          macro method_added(m)
+            @@last_method = {{m.name.stringify}}
+          end
+
+          def foo
+          end
+        end
+
+        Foo.last_method.not_nil!
+      CRYSTAL
+    end
   end
 end
