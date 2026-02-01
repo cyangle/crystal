@@ -3226,6 +3226,9 @@ class Crystal::Repl::Compiler < Crystal::Visitor
   end
 
   def visit(node : Def)
+    node.hook_expansions.try &.each do |expansion|
+      discard_value expansion
+    end
     false
   end
 
@@ -3269,23 +3272,6 @@ class Crystal::Repl::Compiler < Crystal::Visitor
     node.hook_expansions.try &.each do |expansion|
       discard_value expansion
     end
-    false
-  end
-
-  def visit(node : EnumDef)
-    # TODO: visit body?
-    false
-  end
-
-  def visit(node : Def)
-    node.hook_expansions.try &.each do |expansion|
-      discard_value expansion
-    end
-    false
-  end
-
-
-  def visit(node : Extend)
     false
   end
 
