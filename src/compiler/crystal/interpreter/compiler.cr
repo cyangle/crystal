@@ -696,13 +696,17 @@ class Crystal::Repl::Compiler < Crystal::Visitor
 
         # This will initialize the constant
         const_initialized index, node: nil
-        pop(sizeof(Pointer(Void)), node: nil) # pop the bool value
+        branch_if 0, node: nil
+        cond_jump_location = patch_location
 
         call compiled_def, node: nil
-
-        # Why we dup: check the Var case (it's similar)
-        dup(aligned_sizeof_type(const.value.type), node: nil) if @wants_value
         set_const index, aligned_sizeof_type(const.value), node: nil
+
+        patch_jump(cond_jump_location)
+
+        if @wants_value
+          get_const index, aligned_sizeof_type(const.value), node: nil
+        end
       elsif @wants_value
         # This is probably the last constant defined in a file, and it's a throw-away value
         put_nil node: node
