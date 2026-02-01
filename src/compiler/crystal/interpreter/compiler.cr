@@ -3187,6 +3187,9 @@ class Crystal::Repl::Compiler < Crystal::Visitor
 
   def visit(node : ClassDef)
     with_scope(node.resolved_type.metaclass) do
+      node.hook_expansions.try &.each do |expansion|
+        discard_value expansion
+      end
       discard_value node.body
     end
 
@@ -3256,8 +3259,31 @@ class Crystal::Repl::Compiler < Crystal::Visitor
   end
 
   def visit(node : Include)
+    node.hook_expansions.try &.each do |expansion|
+      discard_value expansion
+    end
     false
   end
+
+  def visit(node : Extend)
+    node.hook_expansions.try &.each do |expansion|
+      discard_value expansion
+    end
+    false
+  end
+
+  def visit(node : EnumDef)
+    # TODO: visit body?
+    false
+  end
+
+  def visit(node : Def)
+    node.hook_expansions.try &.each do |expansion|
+      discard_value expansion
+    end
+    false
+  end
+
 
   def visit(node : Extend)
     false
