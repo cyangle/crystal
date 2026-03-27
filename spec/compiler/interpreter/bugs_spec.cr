@@ -360,6 +360,26 @@ describe Crystal::Repl::Interpreter do
       CRYSTAL
     end
 
+    it "does a value cast from a union type including a module to that module" do
+      interpret(<<-CRYSTAL).should eq(1)
+        module M
+          def foo; 1; end
+        end
+
+        struct S
+          include M
+        end
+
+        v = S.new.as(Int32 | M)
+
+        if v.is_a?(M)
+          v.foo
+        else
+          0
+        end
+      CRYSTAL
+    end
+
     it "executes inherited hook expansions in ClassDef" do
       interpret(<<-CRYSTAL).should eq(1)
         class Foo
@@ -431,6 +451,35 @@ describe Crystal::Repl::Interpreter do
         end
 
         Foo.last_method.not_nil!
+      CRYSTAL
+    end
+
+    it "does a value cast from a union type including a module to that module (mixed class/struct)" do
+      interpret(<<-CRYSTAL).should eq(2)
+        module M
+          def foo; 1; end
+        end
+
+        struct S
+          include M
+        end
+
+        class C
+          include M
+        end
+
+        v1 = S.new.as(Int32 | M)
+        x = 0
+        if v1.is_a?(M)
+          x += v1.foo
+        end
+
+        v2 = C.new.as(Int32 | M)
+        if v2.is_a?(M)
+          x += v2.foo
+        end
+
+        x
       CRYSTAL
     end
   end

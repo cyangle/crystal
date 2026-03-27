@@ -412,8 +412,15 @@ class Crystal::Repl::Compiler
     end
   end
 
-  private def downcast_distinct(node : ASTNode, from : MixedUnionType, to : PrimitiveType | EnumType | NonGenericClassType | GenericClassInstanceType | GenericClassInstanceMetaclassType | NilableType | NilableProcType | NilableReferenceUnionType | ReferenceUnionType | MetaclassType | VirtualType | VirtualMetaclassType)
-    remove_from_union(aligned_sizeof_type(from), aligned_sizeof_type(to), node: nil)
+  private def downcast_distinct(node : ASTNode, from : MixedUnionType, to : PrimitiveType | EnumType | NonGenericClassType | GenericClassInstanceType | GenericClassInstanceMetaclassType | NilableType | NilableProcType | NilableReferenceUnionType | ReferenceUnionType | MetaclassType | VirtualType | VirtualMetaclassType | NonGenericModuleType | GenericModuleInstanceType)
+    if ((to.is_a?(NonGenericModuleType) || to.is_a?(GenericModuleInstanceType)) && to.passed_by_value?) || (to.is_a?(VirtualType) && to.struct?)
+      difference = aligned_sizeof_type(from) - aligned_sizeof_type(to)
+      if difference > 0
+        pop(difference, node: nil)
+      end
+    else
+      remove_from_union(aligned_sizeof_type(from), aligned_sizeof_type(to), node: nil)
+    end
   end
 
   private def downcast_distinct(node : ASTNode, from : NilableType, to : NonGenericClassType | GenericClassInstanceType)
