@@ -57,6 +57,8 @@ class Crystal::Repl::Context
   # A cache from C proc pointers to `CompiledDef`s, formed using `Proc.new`.
   getter extern_proc_wrappers = {} of Void* => CompiledDef
 
+  @id_to_type = [] of Type
+
   def initialize(@program : Program)
     @program.flags << "interpreted"
 
@@ -91,7 +93,6 @@ class Crystal::Repl::Context
 
     # Mapping of types to numeric ids
     @type_to_id = {} of Type => Int32
-    @id_to_type = [] of Type
 
     @constants = Constants.new(self)
     @class_vars = ClassVars.new(self)

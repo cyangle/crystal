@@ -2517,7 +2517,12 @@ class Crystal::Repl::Compiler < Crystal::Visitor
 
         # If the self that we need to pass is a union but the actual type of `obj`
         # is not a union, we need to reach the union's value.
-        if self_type.remove_indirection.is_a?(MixedUnionType) && !obj.type.remove_indirection.is_a?(MixedUnionType)
+        if (self_type.remove_indirection.is_a?(MixedUnionType) ||
+           (self_type.is_a?(VirtualType) && self_type.struct? && self_type.abstract?) ||
+           ((self_type.is_a?(NonGenericModuleType) || self_type.is_a?(GenericModuleInstanceType)) && self_type.passed_by_value?)) &&
+           !(obj.type.is_a?(MixedUnionType) ||
+           (obj.type.is_a?(VirtualType) && obj.type.struct?) ||
+           ((obj.type.is_a?(NonGenericModuleType) || obj.type.is_a?(GenericModuleInstanceType)) && obj.type.passed_by_value?))
           pointer_add_constant 8, node: obj
         end
       elsif self_type == owner

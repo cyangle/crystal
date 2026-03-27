@@ -482,5 +482,54 @@ describe Crystal::Repl::Interpreter do
         x
       CRYSTAL
     end
+    it "handles union size discrepancy when unboxing (index out of bounds bug)" do
+      interpret(<<-CRYSTAL, prelude: "prelude").should eq("true")
+        module Instance
+        end
+
+        struct Changeset(T)
+          include Instance
+          def initialize(@data : T)
+            @changes = {} of Symbol => V
+          end
+          def get_field(field : Symbol) : V
+            @changes[field]
+          end
+          def changes
+            @changes
+          end
+        end
+
+        alias V = String | Instance | Array(Instance) | Nil
+
+        struct S1
+          @name : String?
+          def initialize(@name = nil)
+          end
+        end
+
+        class C1
+          include Instance
+        end
+
+        # We need to define eq and should to avoid pulling in the whole spec library
+        # which might be too heavy for a unit test, but here we want to reproduce the exact issue.
+        # Actually, the interpret helper in spec uses a minimal prelude.
+        # Let's use a simpler version of the repro that doesn't depend on spec.
+
+        def test(v : V, expected_type : Class)
+          v.is_a?(Instance)
+        end
+
+        cs = Changeset(C1).new(C1.new)
+        cs.changes[:a] = Changeset(C1).new(C1.new).as(Instance)
+        v = cs.get_field(:a)
+        # This call might trigger the upcast from V (24) to Subset (32) if the compiler filters it.
+        # To be sure, we reproduce the situation where a subset is used.
+        
+        res = v.is_a?(Instance)
+        res
+      CRYSTAL
+    end
   end
 end

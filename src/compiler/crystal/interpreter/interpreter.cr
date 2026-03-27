@@ -1061,8 +1061,8 @@ class Crystal::Repl::Interpreter
     @context.type_id(type)
   end
 
-  private def type_from_type_id(id : Int32) : Type
-    @context.type_from_id(id)
+  private def type_from_type_id(type_id : Int32) : Type
+    @context.type_from_id(type_id)
   end
 
   # How many bytes the `type_id` portion of a union type occupy.

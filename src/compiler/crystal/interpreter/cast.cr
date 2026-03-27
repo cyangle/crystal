@@ -80,6 +80,8 @@ class Crystal::Repl::Compiler
 
     if difference > 0
       push_zeros(difference, node: nil)
+    elsif difference < 0
+      pop(-difference, node: nil)
     end
 
     # If needs_union_value_cast was true, we have a bunch of
@@ -409,6 +411,8 @@ class Crystal::Repl::Compiler
 
     if difference > 0
       pop(difference, node: nil)
+    elsif difference < 0
+      push_zeros(-difference, node: nil)
     end
   end
 
@@ -417,6 +421,8 @@ class Crystal::Repl::Compiler
       difference = aligned_sizeof_type(from) - aligned_sizeof_type(to)
       if difference > 0
         pop(difference, node: nil)
+      elsif difference < 0
+        push_zeros(-difference, node: nil)
       end
     else
       remove_from_union(aligned_sizeof_type(from), aligned_sizeof_type(to), node: nil)
