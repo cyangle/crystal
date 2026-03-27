@@ -1774,10 +1774,12 @@ class Crystal::Repl::Compiler < Crystal::Visitor
     end
 
     case type
-    when VirtualType
-      reference_is_a(type_id(filtered_type), node: node)
-    when MixedUnionType
-      union_is_a(aligned_sizeof_type(type), type_id(filtered_type), node: node)
+    when VirtualType, MixedUnionType, NonGenericModuleType, GenericModuleInstanceType
+      if type.passed_by_value?
+        union_is_a(aligned_sizeof_type(type), type_id(filtered_type), node: node)
+      else
+        reference_is_a(type_id(filtered_type), node: node)
+      end
     when NilableType
       if filtered_type.nil_type?
         pointer_is_null(node: node)
@@ -2514,27 +2516,17 @@ class Crystal::Repl::Compiler < Crystal::Visitor
 
     if obj.type == var_type
       pointerof_local_var_or_closured_var(var, node: obj)
-    elsif var_type.is_a?(MixedUnionType) && obj.type.struct?
+    elsif var_type.is_a?(MixedUnionType) ||
+          (var_type.is_a?(VirtualType) && var_type.struct? && var_type.abstract?) ||
+          ((var_type.is_a?(NonGenericModuleType) || var_type.is_a?(GenericModuleInstanceType)) && var_type.passed_by_value?)
       # Get pointer of var
       pointerof_local_var_or_closured_var(var, node: obj)
 
-      # Add 8 to it, to reach the union value
-      pointer_add_constant 8, node: obj
-    elsif var_type.is_a?(MixedUnionType) && obj.type.is_a?(MixedUnionType)
-      pointerof_local_var_or_closured_var(var, node: obj)
-    elsif var_type.is_a?(VirtualType) && var_type.struct? && var_type.abstract?
-      if obj.type.is_a?(MixedUnionType)
-        # If downcasting to a mix of the subtypes, it's a union type and it
-        # has the same representation as the virtual type
-        pointerof_local_var_or_closured_var(var, node: obj)
-      else
-        # A virtual struct is represented like {type_id, value}, and if we need
-        # to downcast to one of the struct types we need to skip the type_id header,
-        # which is 8 bytes.
-
-        # Get pointer of var
-        pointerof_local_var_or_closured_var(var, node: obj)
-
+      # If the target type is not a union-like type, we need to skip the type_id header,
+      # which is 8 bytes.
+      unless obj.type.is_a?(MixedUnionType) ||
+             (obj.type.is_a?(VirtualType) && obj.type.struct?) ||
+             ((obj.type.is_a?(NonGenericModuleType) || obj.type.is_a?(GenericModuleInstanceType)) && obj.type.passed_by_value?)
         # Add 8 to it, to reach the value
         pointer_add_constant 8, node: obj
       end
