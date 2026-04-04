@@ -531,5 +531,49 @@ describe Crystal::Repl::Interpreter do
         res
       CRYSTAL
     end
+    it "differentiates Multidispatch cache keys by target_defs (IndexError / Unreachable bug)" do
+      interpret(<<-CRYSTAL, prelude: "prelude").should eq("true")
+        class Object
+          def check
+            true
+          end
+        end
+
+        module Instance
+        end
+
+        class Changeset(T)
+          include Instance
+          def initialize(@data : T)
+          end
+          property field : V = nil
+        end
+
+        alias V = String | Instance | Nil
+
+        class C1
+          include Instance
+        end
+
+        class C2
+          include Instance
+        end
+
+        b1 = -> {
+          cs = Changeset(C1).new(C1.new)
+          cs.field = C1.new.as(Instance)
+          cs.field.check
+        }
+
+        b2 = -> {
+          cs = Changeset(C2).new(C2.new)
+          cs.field = Changeset(C2).new(C2.new)
+          cs.field.check
+        }
+
+        b1.call
+        b2.call
+      CRYSTAL
+    end
   end
 end
