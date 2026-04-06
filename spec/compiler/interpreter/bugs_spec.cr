@@ -575,5 +575,43 @@ describe Crystal::Repl::Interpreter do
         b2.call
       CRYSTAL
     end
+    it "differentiates Multidispatch cache keys by target_defs (IndexError / Unreachable bug)" do
+      interpret(<<-CRYSTAL).should eq(42)
+        module M1; end
+        module M2; end
+
+        class G(T)
+          include M1
+          def my_check; 42; end
+        end
+
+        # Union with two modules
+        alias V = Int32 | M1 | M2 | Nil
+
+        class C
+          include M2
+        end
+
+        class Object
+          def my_check; 0; end
+        end
+
+        # First call site: G(M1 | C) exists
+        v1 = G(M2 | C).new.as(V)
+        # This multidispatch list will have: Int32#check, G(M2 | C)#check, M2#check, Nil#check
+        res1 = v1.my_check
+
+        # Second call site: G(C) is instantiated later.
+        # This adds an extra target_def to the multidispatch list of my_check on V.
+        v2 = G(C).new.as(V)
+        res2 = v2.my_check
+
+        if res1 == 42 && res2 == 42
+          42
+        else
+          0
+        end
+      CRYSTAL
+    end
   end
 end

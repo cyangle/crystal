@@ -4,7 +4,7 @@ require "./repl"
 # program. For example, it includes the memory region to store constants
 # and class variables, what are all the know symbols, and a few more things.
 class Crystal::Repl::Context
-  record MultidispatchKey, obj_type : Type, call_signature : CallSignature
+  record MultidispatchKey, obj_type : Type, call_signature : CallSignature, target_def_ids : Array(UInt64)
 
   getter program : Program
 
